@@ -16,7 +16,55 @@ SD カードの紛失やトラブル発生時に、「いつ・誰が・どの�
 
 ## 現在のステータス
 
-`docs/system-design.md` にてシステム設計フェーズを完了。次フェーズで実装に着手します。
+システム設計（`docs/system-design.md`）に基づき、**動作する実装が完成**しています。
+登録フロー（持ち出し / 予備 / 提出 / 予備→持ち出し）、管理ダッシュボード、利用記録の
+検索・フィルタ・修正（監査ログ付き）、マスタ CRUD、CSV エクスポート、管理者認証を実装済み。
+
+## セットアップ
+
+```bash
+# 1. 依存をインストール（postinstall で Prisma Client も生成）
+npm install
+
+# 2. 環境変数を用意（本番では値を必ず変更）
+cp .env.example .env
+
+# 3. DB を作成してサンプルデータを投入
+npm run db:push
+npm run db:seed
+```
+
+## 実行
+
+```bash
+# 開発
+npm run dev            # http://localhost:3000
+
+# 本番（ビルドして起動）
+npm run build
+node .next/standalone/server.js   # standalone 出力（自前ホスト向け）
+```
+
+- 登録画面（スマホ向け）: `/`
+- 管理画面（PC 向け）: `/admin` … 初期アカウント `admin` / `admin1234`（**本番では必ず変更**）
+
+### 主なコマンド
+
+| コマンド | 内容 |
+| --- | --- |
+| `npm run dev` | 開発サーバー |
+| `npm run build` | Prisma 生成 + Next.js ビルド |
+| `npm run db:push` | スキーマを SQLite に反映 |
+| `npm run db:seed` | 管理者＋サンプルマスタ投入 |
+| `npm run db:reset` | DB 初期化して再シード |
+
+## 公開（LAN + インターネット・無料）
+
+1. 常時起動マシン（LAN 内 PC / Raspberry Pi）で `node .next/standalone/server.js` を起動
+2. LAN 内は `http://<サーバーのLAN IP>:3000` でアクセス
+3. インターネット公開は **Cloudflare Tunnel（無料）**＋必要に応じて **Cloudflare Access（無料）** で保護
+
+詳細手順は [システム設計書 §10](docs/system-design.md#10-公開ネットワーク構成) を参照。
 
 ## 技術スタック（推奨）
 

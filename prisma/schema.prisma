@@ -1,0 +1,110 @@
+// 記録班 SDカード管理システム ─ Prisma スキーマ
+// 設計書 docs/system-design.md §6 に対応
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// カメラマンマスタ
+model Cameraman {
+  id        Int      @id @default(autoincrement())
+  name      String
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  usageRecords UsageRecord[]
+
+  @@map("cameramen")
+}
+
+/// カードマスタ（物理SDカード）
+model Card {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique // カードNo / ラベル（例: SD-001）
+  note      String? // 容量・型番などのメモ
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  usageRecords UsageRecord[]
+
+  @@map("cards")
+}
+
+/// シーンマスタ
+model Scene {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String? // シーン番号 / コード
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  usageRecords UsageRecord[]
+
+  @@map("scenes")
+}
+
+/// 利用記録（管理一覧の本体）
+/// 1枚のカードの「持ち出し〜提出」を1レコードで表現する
+model UsageRecord {
+  id          Int       @id @default(autoincrement()) // 登録順No
+  cardId      Int
+  cameramanId Int
+  sceneId     Int? // 予備保持中はnull
+  kind        String // "checkout" | "spare"
+  status      String // "spare_held" | "checked_out" | "submitted"
+  checkedOutAt DateTime? // 持ち出し日時
+  spareAt      DateTime? // 予備確保日時
+  submittedAt  DateTime? // 提出日時
+  note         String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  card      Card      @relation(fields: [cardId], references: [id])
+  cameraman Cameraman @relation(fields: [cameramanId], references: [id])
+  scene     Scene?    @relation(fields: [sceneId], references: [id])
+  auditLogs AuditLog[]
+
+  @@index([cardId])
+  @@index([cameramanId])
+  @@index([sceneId])
+  @@index([checkedOutAt])
+  @@index([submittedAt])
+  @@index([status])
+  @@map("usage_records")
+}
+
+/// 監査ログ（追記専用・トラブル追跡の一次情報）
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  usageRecordId Int?
+  adminUserId   Int?
+  action        String // "create" | "update" | "correct" | "delete"
+  actorLabel    String // 操作者の表示名（カメラマン名 or 管理者名）
+  before        String? // 変更前スナップショット（JSON文字列）
+  after         String? // 変更後スナップショット（JSON文字列）
+  createdAt     DateTime @default(now())
+
+  usageRecord UsageRecord? @relation(fields: [usageRecordId], references: [id])
+
+  @@index([usageRecordId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// 管理者
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@map("admin_users")
+}
