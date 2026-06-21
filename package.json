@@ -32,11 +32,12 @@
       "node_modules/**",
       "package.json"
     ],
-    "asarUnpack": [
-      "**/node_modules/@prisma/**",
-      "**/node_modules/.prisma/**",
-      "**/node_modules/prisma/**",
-      "**/*.node"
+    "asar": false,
+    "extraResources": [
+      {
+        "from": "node_modules/.prisma",
+        "to": "app/node_modules/.prisma"
+      }
     ],
     "extraMetadata": { "main": "electron/main.js" },
     "win": { "target": "nsis" },

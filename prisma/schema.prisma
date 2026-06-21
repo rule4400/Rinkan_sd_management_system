@@ -2,7 +2,10 @@
 // 設計書 docs/system-design.md §6 に対応
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // ネイティブ（ビルド環境）に加え、配布先の macOS 用クエリエンジンも同梱する。
+  // Intel = darwin / Apple Silicon = darwin-arm64
+  binaryTargets = ["native", "darwin", "darwin-arm64"]
 }
 
 datasource db {

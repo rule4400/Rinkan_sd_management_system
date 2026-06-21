@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { prisma } from "./db";
+import { getCookieSecure } from "./cookies";
 
 const COOKIE_NAME = "sd_admin_session";
 const SESSION_TTL_SEC = 60 * 60 * 8; // 8時間
@@ -67,7 +68,7 @@ export async function createSession(adminId: number): Promise<void> {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await getCookieSecure(),
     path: "/",
     maxAge: SESSION_TTL_SEC,
   });

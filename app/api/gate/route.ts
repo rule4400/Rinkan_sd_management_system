@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { ok, handleError, AppError } from "@/lib/api";
 import { gateSchema } from "@/lib/validation";
 import { GATE_COOKIE, isGateEnabled, expectedGateToken } from "@/lib/gate";
+import { getCookieSecure } from "@/lib/cookies";
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
     cookieStore.set(GATE_COOKIE, expectedGateToken(), {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: await getCookieSecure(),
       path: "/",
       maxAge: 60 * 60 * 24 * 30, // 30日
     });
