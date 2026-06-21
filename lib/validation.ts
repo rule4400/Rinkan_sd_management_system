@@ -64,5 +64,16 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "現在のパスワードを入力してください"),
+  newPassword: z
+    .string()
+    .min(8, "新しいパスワードは8文字以上にしてください"),
+});
+
+export const gateSchema = z.object({
+  passphrase: z.string().min(1),
+});
+
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type SpareInput = z.infer<typeof spareSchema>;

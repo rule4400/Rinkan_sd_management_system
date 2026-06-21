@@ -11,6 +11,9 @@ next-env.d.ts
 # production
 /build
 
+# electron-builder 出力
+/dist-app
+
 # database (SQLite) — 本番DBはコミットしない
 *.db
 *.db-journal

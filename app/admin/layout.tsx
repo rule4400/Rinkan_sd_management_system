@@ -8,6 +8,7 @@ const NAV = [
   { href: "/admin", label: "ダッシュボード" },
   { href: "/admin/records", label: "利用記録" },
   { href: "/admin/masters", label: "マスタ管理" },
+  { href: "/admin/settings", label: "設定" },
 ];
 
 export default function AdminLayout({
