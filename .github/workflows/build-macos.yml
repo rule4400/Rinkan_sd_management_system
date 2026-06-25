@@ -12,6 +12,11 @@ on:
     branches:
       - claude/blissful-galileo-g8kq0n
 
+# 新しい push が来たら進行中の古いビルドは自動キャンセル（CI 節約）
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-mac:
     runs-on: macos-14 # Apple Silicon (arm64)
@@ -20,10 +25,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20 (LTS)
+      - name: Setup Node.js (LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
 
       - name: Install dependencies

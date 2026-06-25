@@ -10,7 +10,7 @@
     "lint": "next lint",
     "app": "next build && electron .",
     "app:dev": "electron .",
-    "dist": "npm run db:reset && next build && electron-builder",
+    "dist": "npm run db:reset && next build && electron-builder --publish never",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
