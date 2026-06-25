@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, Number(sp.get("page")) || 1);
     const pageSize = Math.min(200, Math.max(1, Number(sp.get("pageSize")) || 50));
 
-    const [total, rows] = await Promise.all([
+    const [total, found] = await Promise.all([
       prisma.usageRecord.count({ where }),
       prisma.usageRecord.findMany({
         where,
@@ -25,9 +25,18 @@ export async function GET(req: NextRequest) {
           card: { select: { id: true, label: true } },
           cameraman: { select: { id: true, name: true } },
           scene: { select: { id: true, name: true } },
+          recordScenes: {
+            include: { scene: { select: { id: true, name: true } } },
+          },
         },
       }),
     ]);
+
+    // 複数シーンを scenes 配列として平坦化して返す
+    const rows = found.map(({ recordScenes, ...r }) => ({
+      ...r,
+      scenes: recordScenes.map((rs) => rs.scene),
+    }));
 
     return ok({ total, page, pageSize, rows });
   } catch (e) {

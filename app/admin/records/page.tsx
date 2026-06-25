@@ -4,24 +4,33 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type Option = { id: number; name?: string; label?: string };
+type SceneRef = { id: number; name: string };
 type Row = {
   id: number;
   status: string;
   kind: string;
   checkedOutAt: string | null;
   spareAt: string | null;
+  provisionalAt: string | null;
   submittedAt: string | null;
   note: string | null;
   card: { id: number; label: string };
   cameraman: { id: number; name: string };
   scene: { id: number; name: string } | null;
+  scenes: SceneRef[];
 };
 
 const STATUS: { value: string; label: string; cls: string }[] = [
   { value: "spare_held", label: "予備保持中", cls: "bg-amber-100 text-amber-700" },
   { value: "checked_out", label: "持ち出し中", cls: "bg-blue-100 text-blue-700" },
+  { value: "provisional", label: "仮提出", cls: "bg-violet-100 text-violet-700" },
   { value: "submitted", label: "提出済み", cls: "bg-emerald-100 text-emerald-700" },
 ];
+
+function sceneText(r: Row): string {
+  if (r.scenes && r.scenes.length) return r.scenes.map((s) => s.name).join(" / ");
+  return r.scene?.name ?? "—";
+}
 
 function fmt(v: string | null): string {
   if (!v) return "—";
@@ -252,7 +261,7 @@ function RecordsInner() {
                 <Td>{fmt(r.submittedAt)}</Td>
                 <Td>{r.cameraman.name}</Td>
                 <Td>{r.card.label}</Td>
-                <Td>{r.scene?.name ?? "—"}</Td>
+                <Td>{sceneText(r)}</Td>
                 <Td>
                   <button
                     onClick={() => setEditing(r)}
@@ -288,7 +297,7 @@ function RecordsInner() {
               <span className="text-slate-500">カードNo</span>
               <span className="text-right font-medium">{r.card.label}</span>
               <span className="text-slate-500">シーン</span>
-              <span className="text-right">{r.scene?.name ?? "—"}</span>
+              <span className="text-right">{sceneText(r)}</span>
               <span className="text-slate-500">持ち出し</span>
               <span className="text-right">{fmt(r.checkedOutAt)}</span>
               <span className="text-slate-500">提出</span>
@@ -447,13 +456,22 @@ function EditModal({
 
   const [cameramanId, setCameramanId] = useState(row.cameraman.id);
   const [cardId, setCardId] = useState(row.card.id);
-  const [sceneId, setSceneId] = useState<number | "">(row.scene?.id ?? "");
+  const [sceneIds, setSceneIds] = useState<number[]>(
+    row.scenes?.length ? row.scenes.map((s) => s.id) : row.scene ? [row.scene.id] : [],
+  );
   const [status, setStatus] = useState(row.status);
   const [checkedOutAt, setCheckedOutAt] = useState(toLocal(row.checkedOutAt));
+  const [provisionalAt, setProvisionalAt] = useState(toLocal(row.provisionalAt));
   const [submittedAt, setSubmittedAt] = useState(toLocal(row.submittedAt));
   const [note, setNote] = useState(row.note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function toggleScene(id: number) {
+    setSceneIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
 
   async function save() {
     setSaving(true);
@@ -462,9 +480,10 @@ function EditModal({
       const body = {
         cameramanId,
         cardId,
-        sceneId: sceneId === "" ? null : Number(sceneId),
+        sceneIds,
         status,
         checkedOutAt: checkedOutAt ? new Date(checkedOutAt).toISOString() : null,
+        provisionalAt: provisionalAt ? new Date(provisionalAt).toISOString() : null,
         submittedAt: submittedAt ? new Date(submittedAt).toISOString() : null,
         note: note || null,
       };
@@ -481,6 +500,28 @@ function EditModal({
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存に失敗しました");
     } finally {
+      setSaving(false);
+    }
+  }
+
+  async function undo() {
+    if (!confirm(`記録 No.${row.id} の直前の変更を元に戻します。よろしいですか？`))
+      return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/usage/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usageRecordId: row.id }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "取り消しに失敗しました");
+      }
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "取り消しに失敗しました");
       setSaving(false);
     }
   }
@@ -543,21 +584,29 @@ function EditModal({
               ))}
             </select>
           </Labeled>
-          <Labeled label="シーン">
-            <select
-              className="field"
-              value={sceneId}
-              onChange={(e) =>
-                setSceneId(e.target.value === "" ? "" : Number(e.target.value))
-              }
-            >
-              <option value="">（なし）</option>
-              {scenes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+          <Labeled label={`シーン（複数選択可・${sceneIds.length}件）`}>
+            <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-200 p-2">
+              {scenes.map((c) => {
+                const on = sceneIds.includes(c.id);
+                return (
+                  <button
+                    type="button"
+                    key={c.id}
+                    onClick={() => toggleScene(c.id)}
+                    className={`badge border px-2.5 py-1 ${
+                      on
+                        ? "border-transparent bg-brand text-white"
+                        : "border-slate-300 text-slate-600"
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
+              {scenes.length === 0 && (
+                <span className="text-xs text-slate-400">選択肢なし</span>
+              )}
+            </div>
           </Labeled>
           <Labeled label="状態">
             <select
@@ -580,6 +629,14 @@ function EditModal({
               onChange={(e) => setCheckedOutAt(e.target.value)}
             />
           </Labeled>
+          <Labeled label="仮提出日時">
+            <input
+              type="datetime-local"
+              className="field"
+              value={provisionalAt}
+              onChange={(e) => setProvisionalAt(e.target.value)}
+            />
+          </Labeled>
           <Labeled label="提出日時">
             <input
               type="datetime-local"
@@ -598,13 +655,23 @@ function EditModal({
         </div>
 
         <div className="mt-5 flex items-center justify-between gap-2">
-          <button
-            onClick={remove}
-            disabled={saving}
-            className="rounded-lg px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-          >
-            削除
-          </button>
+          <div className="flex gap-1">
+            <button
+              onClick={remove}
+              disabled={saving}
+              className="rounded-lg px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+            >
+              削除
+            </button>
+            <button
+              onClick={undo}
+              disabled={saving}
+              className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+              title="この記録の直前の操作・変更を取り消します"
+            >
+              ↩ 元に戻す
+            </button>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={onClose}

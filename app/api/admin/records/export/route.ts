@@ -7,6 +7,7 @@ import { buildRecordsWhere, parseSort } from "@/lib/records-query";
 const STATUS_LABEL: Record<string, string> = {
   spare_held: "予備保持中",
   checked_out: "持ち出し中",
+  provisional: "仮提出",
   submitted: "提出済み",
 };
 
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
       include: {
         card: { select: { label: true } },
         cameraman: { select: { name: true } },
-        scene: { select: { name: true } },
+        recordScenes: { include: { scene: { select: { name: true } } } },
       },
     });
 
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
       "No",
       "状態",
       "持ち出し日時",
+      "仮提出日時",
       "提出日時",
       "カメラマン",
       "カードNo",
@@ -56,10 +58,11 @@ export async function GET(req: NextRequest) {
           r.id,
           STATUS_LABEL[r.status] ?? r.status,
           fmt(r.checkedOutAt),
+          fmt(r.provisionalAt),
           fmt(r.submittedAt),
           r.cameraman.name,
           r.card.label,
-          r.scene?.name ?? "",
+          r.recordScenes.map((rs) => rs.scene.name).join(" / "),
           r.note ?? "",
         ]
           .map(csvCell)

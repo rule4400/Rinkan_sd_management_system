@@ -185,6 +185,9 @@ function MasterManager({ tab }: { tab: Tab }) {
         </div>
       )}
 
+      {/* CSV テンプレート / インポート */}
+      <CsvPanel tab={tab} onImported={load} />
+
       {/* 新規追加 */}
       <div className="rounded-2xl bg-white p-4 shadow-sm">
         <div className="mb-2 text-sm font-medium">新規登録</div>
@@ -312,6 +315,71 @@ function MasterManager({ tab }: { tab: Tab }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// CSV テンプレートのダウンロードと一括インポート
+function CsvPanel({
+  tab,
+  onImported,
+}: {
+  tab: Tab;
+  onImported: () => void;
+}) {
+  const [result, setResult] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 同じファイルを選び直せるようにリセット
+    if (!file) return;
+    setImporting(true);
+    setResult(null);
+    try {
+      const csv = await file.text();
+      const res = await fetch("/api/admin/masters/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: tab, csv }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "インポートに失敗しました");
+      const errs = j.errors?.length ? ` / エラー${j.errors.length}件` : "";
+      setResult(`登録 ${j.created} 件・スキップ ${j.skipped} 件${errs}`);
+      onImported();
+    } catch (err) {
+      setResult(err instanceof Error ? err.message : "インポートに失敗しました");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <a
+          href={`/api/admin/masters/template?type=${tab}`}
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-white"
+        >
+          CSVテンプレートをダウンロード
+        </a>
+        <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm hover:bg-slate-100">
+          {importing ? "インポート中…" : "CSVを取り込む"}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={onFile}
+            disabled={importing}
+          />
+        </label>
+        {result && <span className="text-sm text-slate-600">{result}</span>}
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        テンプレートの1行目はヘッダです。2行目以降に記入して取り込んでください（記入例の行は置き換え/削除）。
+        既存（カメラマン名・カードNo・シーン名）と重複する行はスキップされます。
+      </p>
     </div>
   );
 }

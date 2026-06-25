@@ -15,29 +15,54 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const input = recordUpdateSchema.parse(await req.json());
 
     const result = await prisma.$transaction(async (tx) => {
-      const before = await tx.usageRecord.findUnique({
+      const beforeRow = await tx.usageRecord.findUnique({
         where: { id: recordId },
+        include: { recordScenes: true },
       });
-      if (!before) throw new AppError("対象の記録が見つかりません。", 404);
+      if (!beforeRow) throw new AppError("対象の記録が見つかりません。", 404);
+      const before = {
+        ...beforeRow,
+        sceneIds: beforeRow.recordScenes.map((rs) => rs.sceneId),
+      };
 
       const data: Record<string, unknown> = {};
       if (input.cardId !== undefined) data.cardId = input.cardId;
       if (input.cameramanId !== undefined) data.cameramanId = input.cameramanId;
-      if (input.sceneId !== undefined) data.sceneId = input.sceneId;
       if (input.kind !== undefined) data.kind = input.kind;
       if (input.status !== undefined) data.status = input.status;
       if (input.checkedOutAt !== undefined)
         data.checkedOutAt = input.checkedOutAt ? new Date(input.checkedOutAt) : null;
       if (input.spareAt !== undefined)
         data.spareAt = input.spareAt ? new Date(input.spareAt) : null;
+      if (input.provisionalAt !== undefined)
+        data.provisionalAt = input.provisionalAt ? new Date(input.provisionalAt) : null;
       if (input.submittedAt !== undefined)
         data.submittedAt = input.submittedAt ? new Date(input.submittedAt) : null;
       if (input.note !== undefined) data.note = input.note;
 
-      const updated = await tx.usageRecord.update({
+      // シーンは複数選択（sceneIds）を優先。指定があれば中間テーブルごと置き換える。
+      if (input.sceneIds !== undefined) {
+        const unique = [...new Set(input.sceneIds)];
+        await tx.recordScene.deleteMany({ where: { usageRecordId: recordId } });
+        if (unique.length) {
+          await tx.recordScene.createMany({
+            data: unique.map((sceneId) => ({ usageRecordId: recordId, sceneId })),
+          });
+        }
+        data.sceneId = unique[0] ?? null;
+      } else if (input.sceneId !== undefined) {
+        data.sceneId = input.sceneId;
+      }
+
+      await tx.usageRecord.update({ where: { id: recordId }, data });
+      const updatedRow = await tx.usageRecord.findUnique({
         where: { id: recordId },
-        data,
+        include: { recordScenes: true },
       });
+      const after = {
+        ...updatedRow!,
+        sceneIds: updatedRow!.recordScenes.map((rs) => rs.sceneId),
+      };
 
       await tx.auditLog.create({
         data: {
@@ -46,10 +71,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           action: "correct",
           actorLabel: `管理者:${admin.username}`,
           before: JSON.stringify(before),
-          after: JSON.stringify(updated),
+          after: JSON.stringify(after),
         },
       });
-      return updated;
+      return after;
     });
 
     return ok(result);
@@ -76,6 +101,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         where: { usageRecordId: recordId },
         data: { usageRecordId: null },
       });
+      // シーン紐づけを先に削除（FK 安全のため明示的に）
+      await tx.recordScene.deleteMany({ where: { usageRecordId: recordId } });
       await tx.usageRecord.delete({ where: { id: recordId } });
       await tx.auditLog.create({
         data: {

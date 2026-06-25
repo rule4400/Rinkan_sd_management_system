@@ -6,6 +6,7 @@ import Link from "next/link";
 type Dashboard = {
   checkedOut: number;
   spareHeld: number;
+  provisional: number;
   submittedToday: number;
   totalRecords: number;
   staleCheckedOut: number;
@@ -26,9 +27,10 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-bold">ダッシュボード</h1>
       <p className="mt-1 text-sm text-slate-500">現況のサマリです。</p>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat label="持ち出し中" value={data?.checkedOut} color="text-blue-600" />
         <Stat label="予備保持中" value={data?.spareHeld} color="text-amber-600" />
+        <Stat label="仮提出" value={data?.provisional} color="text-violet-600" />
         <Stat
           label="本日の提出"
           value={data?.submittedToday}

@@ -12,21 +12,44 @@ type Candidate = {
   origin?: "available" | "spare";
   usageRecordId?: number;
   status?: string;
-  sceneName?: string | null;
+  sceneNames?: string[];
 };
 
-type Action = "checkout" | "spare" | "submit";
+type Action = "checkout" | "spare" | "provisional" | "submit";
 type Step = "cameraman" | "action" | "card" | "confirm" | "scene" | "done";
+
+const ACTIONS: Action[] = ["checkout", "spare", "provisional", "submit"];
 
 const ACTION_LABEL: Record<Action, string> = {
   checkout: "持ち出し",
   spare: "予備",
+  provisional: "仮提出",
   submit: "提出",
+};
+const ACTION_DESC: Record<Action, string> = {
+  checkout: "これから撮影に使う",
+  spare: "予備として確保",
+  provisional: "撮影は完了・カードはまだ手元",
+  submit: "カードを正式に提出する",
 };
 const ACTION_COLOR: Record<Action, string> = {
   checkout: "bg-blue-600 text-white",
   spare: "bg-amber-500 text-white",
+  provisional: "bg-violet-600 text-white",
   submit: "bg-emerald-600 text-white",
+};
+const STATUS_LABEL: Record<string, string> = {
+  spare_held: "予備保持中",
+  checked_out: "持ち出し中",
+  provisional: "仮提出",
+};
+
+// シーンを選ぶ操作か（予備のみシーン不要）
+const NEEDS_SCENE: Record<Action, boolean> = {
+  checkout: true,
+  spare: false,
+  provisional: true,
+  submit: true,
 };
 
 export default function RegisterPage() {
@@ -38,11 +61,13 @@ export default function RegisterPage() {
   const [cameraman, setCameraman] = useState<Cameraman | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [card, setCard] = useState<Candidate | null>(null);
-  const [scene, setScene] = useState<Scene | null>(null);
+  const [sceneSel, setSceneSel] = useState<number[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneSummary, setDoneSummary] = useState<string>("");
+  const [lastRecordId, setLastRecordId] = useState<number | null>(null);
+  const [undone, setUndone] = useState(false);
 
   useEffect(() => {
     fetch("/api/cameramen")
@@ -51,24 +76,20 @@ export default function RegisterPage() {
       .catch(() => setError("カメラマン一覧の取得に失敗しました"));
   }, []);
 
-  const loadCandidates = useCallback(
-    async (mode: Action, cm: Cameraman) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(
-          `/api/cards/candidates?mode=${mode}&cameramanId=${cm.id}`,
-        );
-        const data = await res.json();
-        setCandidates(data);
-      } catch {
-        setError("カード一覧の取得に失敗しました");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+  const loadCandidates = useCallback(async (mode: Action, cm: Cameraman) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/cards/candidates?mode=${mode}&cameramanId=${cm.id}`,
+      );
+      setCandidates(await res.json());
+    } catch {
+      setError("カード一覧の取得に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const loadScenes = useCallback(async () => {
     if (scenes.length) return;
@@ -81,56 +102,65 @@ export default function RegisterPage() {
     setCameraman(null);
     setAction(null);
     setCard(null);
-    setScene(null);
+    setSceneSel([]);
     setError(null);
     setDoneSummary("");
+    setLastRecordId(null);
+    setUndone(false);
   }
 
   function restartSameCameraman() {
     setAction(null);
     setCard(null);
-    setScene(null);
+    setSceneSel([]);
     setError(null);
     setDoneSummary("");
+    setLastRecordId(null);
+    setUndone(false);
     setStep("action");
   }
 
-  // 確認後の確定処理
+  // 確認後：シーンが必要なら選択へ、不要（予備）ならそのまま登録
   async function confirmAndProceed() {
-    if (action === "spare") {
-      await doSubmitRequest();
-    } else {
-      // 持ち出し・提出はシーン選択へ
+    if (action && NEEDS_SCENE[action]) {
       await loadScenes();
+      setSceneSel([]);
       setStep("scene");
+    } else {
+      await doSubmitRequest([]);
     }
   }
 
-  async function doSubmitRequest(selectedScene?: Scene) {
+  function toggleScene(id: number) {
+    setSceneSel((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  async function doSubmitRequest(sceneIds: number[]) {
     if (!cameraman || !action || !card) return;
     setLoading(true);
     setError(null);
     try {
       let url = "";
-      let body: Record<string, number> = {};
+      let body: Record<string, unknown> = {};
       if (action === "checkout") {
         if (card.origin === "spare" && card.usageRecordId) {
           url = "/api/usage/spare-to-checkout";
-          body = { usageRecordId: card.usageRecordId, sceneId: selectedScene!.id };
+          body = { usageRecordId: card.usageRecordId, sceneIds };
         } else {
           url = "/api/usage/checkout";
-          body = {
-            cameramanId: cameraman.id,
-            cardId: card.cardId,
-            sceneId: selectedScene!.id,
-          };
+          body = { cameramanId: cameraman.id, cardId: card.cardId, sceneIds };
         }
       } else if (action === "spare") {
         url = "/api/usage/spare";
         body = { cameramanId: cameraman.id, cardId: card.cardId };
+      } else if (action === "provisional") {
+        url = "/api/usage/provisional";
+        body = { usageRecordId: card.usageRecordId, sceneIds };
       } else {
         url = "/api/usage/submit";
-        body = { usageRecordId: card.usageRecordId!, sceneId: selectedScene!.id };
+        body = { usageRecordId: card.usageRecordId, sceneIds };
       }
 
       const res = await fetch(url, {
@@ -138,20 +168,41 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || "登録に失敗しました");
-      }
-      const parts = [
-        cameraman.name,
-        ACTION_LABEL[action],
-        `カード ${card.label}`,
-      ];
-      if (selectedScene) parts.push(`シーン「${selectedScene.name}」`);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "登録に失敗しました");
+
+      const sceneNames = sceneIds
+        .map((id) => scenes.find((s) => s.id === id)?.name)
+        .filter(Boolean);
+      const parts = [cameraman.name, ACTION_LABEL[action], `カード ${card.label}`];
+      if (sceneNames.length) parts.push(`シーン「${sceneNames.join("・")}」`);
       setDoneSummary(parts.join(" / "));
+      setLastRecordId(typeof j.id === "number" ? j.id : null);
+      setUndone(false);
       setStep("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "登録に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function undoLast() {
+    if (lastRecordId == null) return;
+    if (!confirm("直前の操作を取り消します。よろしいですか？")) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/usage/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usageRecordId: lastRecordId }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "取り消しに失敗しました");
+      setUndone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "取り消しに失敗しました");
     } finally {
       setLoading(false);
     }
@@ -178,9 +229,7 @@ export default function RegisterPage() {
               </span>
             )}
             {card && (
-              <span className="badge bg-slate-200 text-slate-700">
-                {card.label}
-              </span>
+              <span className="badge bg-slate-200 text-slate-700">{card.label}</span>
             )}
           </div>
         )}
@@ -218,10 +267,10 @@ export default function RegisterPage() {
         {step === "action" && cameraman && (
           <Section title="操作を選択" onBack={reset}>
             <div className="grid grid-cols-1 gap-3">
-              {(["checkout", "spare", "submit"] as Action[]).map((a) => (
+              {ACTIONS.map((a) => (
                 <button
                   key={a}
-                  className={`tap-btn ${ACTION_COLOR[a]} text-xl`}
+                  className={`tap-btn ${ACTION_COLOR[a]} flex-col gap-0.5 text-xl`}
                   onClick={async () => {
                     setAction(a);
                     setCard(null);
@@ -230,16 +279,23 @@ export default function RegisterPage() {
                   }}
                 >
                   {ACTION_LABEL[a]}
+                  <span className="text-xs font-normal opacity-90">
+                    {ACTION_DESC[a]}
+                  </span>
                 </button>
               ))}
             </div>
           </Section>
         )}
 
-        {step === "card" && (
+        {step === "card" && action && (
           <Section
             title={
-              action === "submit" ? "提出するカードを選択" : "カードNoを選択"
+              action === "submit"
+                ? "提出するカードを選択"
+                : action === "provisional"
+                  ? "仮提出するカードを選択"
+                  : "カードNoを選択"
             }
             onBack={() => setStep("action")}
           >
@@ -262,8 +318,10 @@ export default function RegisterPage() {
                   )}
                   {c.status && (
                     <span className="badge bg-slate-200 text-slate-600">
-                      {c.status === "checked_out" ? "持ち出し中" : "予備保持中"}
-                      {c.sceneName ? ` / ${c.sceneName}` : ""}
+                      {STATUS_LABEL[c.status] ?? c.status}
+                      {c.sceneNames && c.sceneNames.length
+                        ? ` / ${c.sceneNames.join("・")}`
+                        : ""}
                     </span>
                   )}
                 </button>
@@ -273,7 +331,9 @@ export default function RegisterPage() {
               <Empty>
                 {action === "submit"
                   ? "提出できるカード（あなたが保持中のカード）がありません。"
-                  : "選択できるカードがありません。"}
+                  : action === "provisional"
+                    ? "仮提出できるカード（持ち出し中・予備のカード）がありません。"
+                    : "選択できるカードがありません。"}
               </Empty>
             )}
           </Section>
@@ -294,57 +354,85 @@ export default function RegisterPage() {
               disabled={loading}
               onClick={confirmAndProceed}
             >
-              {action === "spare"
-                ? "この内容で登録する"
-                : "次へ（シーン選択）"}
+              {NEEDS_SCENE[action] ? "次へ（シーン選択）" : "この内容で登録する"}
             </button>
           </Section>
         )}
 
-        {step === "scene" && (
+        {step === "scene" && action && (
           <Section
             title={
               action === "submit"
-                ? "撮影したシーンを選択"
-                : "撮影予定シーンを選択"
+                ? "撮影したシーンを選択（複数可）"
+                : action === "provisional"
+                  ? "撮影したシーンを選択（複数可）"
+                  : "撮影予定シーンを選択（複数可）"
             }
             onBack={() => setStep("confirm")}
           >
             {loading && <Loading />}
             <Grid>
-              {scenes.map((s) => (
-                <button
-                  key={s.id}
-                  className="tap-btn flex-col gap-0.5"
-                  onClick={() => {
-                    setScene(s);
-                    doSubmitRequest(s);
-                  }}
-                >
-                  <span>{s.name}</span>
-                  {s.code && (
-                    <span className="text-xs text-slate-400">{s.code}</span>
-                  )}
-                </button>
-              ))}
+              {scenes.map((s) => {
+                const on = sceneSel.includes(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    className={`tap-btn flex-col gap-0.5 ${
+                      on ? "ring-2 ring-brand ring-offset-2" : ""
+                    }`}
+                    onClick={() => toggleScene(s.id)}
+                  >
+                    <span>
+                      {on ? "✓ " : ""}
+                      {s.name}
+                    </span>
+                    {s.code && (
+                      <span className="text-xs text-slate-400">{s.code}</span>
+                    )}
+                  </button>
+                );
+              })}
             </Grid>
             {scenes.length === 0 && !loading && (
               <Empty>シーンが未登録です。管理画面から登録してください。</Empty>
             )}
+            <button
+              className={`tap-btn-primary mt-5 w-full text-xl ${
+                loading || sceneSel.length === 0 ? "opacity-50" : ""
+              }`}
+              disabled={loading || sceneSel.length === 0}
+              onClick={() => doSubmitRequest(sceneSel)}
+            >
+              この内容で登録する（{sceneSel.length} シーン）
+            </button>
           </Section>
         )}
 
         {step === "done" && (
-          <Section title="登録が完了しました">
-            <div className="rounded-2xl bg-emerald-50 p-6 text-center shadow-sm">
-              <div className="text-5xl">✓</div>
-              <p className="mt-3 text-sm text-slate-700">{doneSummary}</p>
+          <Section title={undone ? "取り消しました" : "登録が完了しました"}>
+            <div
+              className={`rounded-2xl p-6 text-center shadow-sm ${
+                undone ? "bg-slate-100" : "bg-emerald-50"
+              }`}
+            >
+              <div className="text-5xl">{undone ? "↩" : "✓"}</div>
+              <p className="mt-3 text-sm text-slate-700">
+                {undone ? "直前の操作を取り消しました。" : doneSummary}
+              </p>
             </div>
-            <div className="mt-6 grid grid-cols-1 gap-3">
+
+            {!undone && lastRecordId != null && (
               <button
-                className="tap-btn-primary"
-                onClick={restartSameCameraman}
+                className="mt-4 w-full rounded-xl border border-slate-300 bg-white py-3 text-sm font-medium text-slate-700 disabled:opacity-60"
+                disabled={loading}
+                onClick={undoLast}
               >
+                ↩ この操作を取り消す（やり直す）
+              </button>
+            )}
+
+            <div className="mt-4 grid grid-cols-1 gap-3">
+              <button className="tap-btn-primary" onClick={restartSameCameraman}>
                 続けて操作する（{cameraman?.name}）
               </button>
               <button className="tap-btn" onClick={reset}>

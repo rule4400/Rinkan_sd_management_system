@@ -54,8 +54,11 @@ export function buildRecordsWhere(
   const cardIds = parseIds(sp.get("cardIds"));
   if (cardIds.length) where.cardId = { in: cardIds };
 
+  // シーンは複数紐づくため中間テーブル経由で「いずれかを含む」で絞り込む
   const sceneIds = parseIds(sp.get("sceneIds"));
-  if (sceneIds.length) where.sceneId = { in: sceneIds };
+  if (sceneIds.length) {
+    where.recordScenes = { some: { sceneId: { in: sceneIds } } };
+  }
 
   const status = (sp.get("status") || "")
     .split(",")
@@ -69,7 +72,7 @@ export function buildRecordsWhere(
     and.push({
       OR: [
         { card: { label: { contains: q } } },
-        { scene: { name: { contains: q } } },
+        { recordScenes: { some: { scene: { name: { contains: q } } } } },
         { note: { contains: q } },
       ],
     });

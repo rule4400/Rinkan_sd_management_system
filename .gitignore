@@ -33,3 +33,6 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# バックアップ出力（実行時生成）
+prisma/backups/

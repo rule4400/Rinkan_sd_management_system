@@ -50,6 +50,7 @@ model Scene {
   createdAt DateTime @default(now())
 
   usageRecords UsageRecord[]
+  recordScenes RecordScene[]
 
   @@map("scenes")
 }
@@ -62,9 +63,10 @@ model UsageRecord {
   cameramanId Int
   sceneId     Int? // 予備保持中はnull
   kind        String // "checkout" | "spare"
-  status      String // "spare_held" | "checked_out" | "submitted"
+  status      String // "spare_held" | "checked_out" | "provisional" | "submitted"
   checkedOutAt DateTime? // 持ち出し日時
   spareAt      DateTime? // 予備確保日時
+  provisionalAt DateTime? // 仮提出日時（撮影完了・カードは保持中）
   submittedAt  DateTime? // 提出日時
   note         String?
   createdAt    DateTime  @default(now())
@@ -72,7 +74,8 @@ model UsageRecord {
 
   card      Card      @relation(fields: [cardId], references: [id])
   cameraman Cameraman @relation(fields: [cameramanId], references: [id])
-  scene     Scene?    @relation(fields: [sceneId], references: [id])
+  scene     Scene?    @relation(fields: [sceneId], references: [id]) // 代表シーン（先頭）
+  recordScenes RecordScene[] // 紐づく全シーン（複数選択対応）
   auditLogs AuditLog[]
 
   @@index([cardId])
@@ -82,6 +85,20 @@ model UsageRecord {
   @@index([submittedAt])
   @@index([status])
   @@map("usage_records")
+}
+
+/// 利用記録 × シーン の中間テーブル（1レコードに複数シーンを紐づける）
+model RecordScene {
+  id            Int @id @default(autoincrement())
+  usageRecordId Int
+  sceneId       Int
+
+  usageRecord UsageRecord @relation(fields: [usageRecordId], references: [id], onDelete: Cascade)
+  scene       Scene       @relation(fields: [sceneId], references: [id])
+
+  @@unique([usageRecordId, sceneId])
+  @@index([sceneId])
+  @@map("record_scenes")
 }
 
 /// 監査ログ（追記専用・トラブル追跡の一次情報）

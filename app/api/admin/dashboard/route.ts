@@ -9,10 +9,11 @@ export async function GET() {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const [checkedOut, spareHeld, submittedToday, totalRecords] =
+    const [checkedOut, spareHeld, provisional, submittedToday, totalRecords] =
       await Promise.all([
         prisma.usageRecord.count({ where: { status: "checked_out" } }),
         prisma.usageRecord.count({ where: { status: "spare_held" } }),
+        prisma.usageRecord.count({ where: { status: "provisional" } }),
         prisma.usageRecord.count({
           where: { submittedAt: { gte: startOfToday } },
         }),
@@ -28,6 +29,7 @@ export async function GET() {
     return ok({
       checkedOut,
       spareHeld,
+      provisional,
       submittedToday,
       totalRecords,
       staleCheckedOut,
