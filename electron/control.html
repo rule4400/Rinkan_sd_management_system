@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>記録班 SDカード管理</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN",
+          "Noto Sans JP", Meiryo, sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        min-height: 100vh;
+      }
+      .wrap { max-width: 640px; margin: 0 auto; padding: 24px; }
+      .title { font-size: 20px; font-weight: 700; }
+      .sub { color: #94a3b8; font-size: 13px; margin-top: 2px; }
+      .status {
+        display: inline-flex; align-items: center; gap: 8px;
+        margin-top: 16px; padding: 6px 12px; border-radius: 999px;
+        font-size: 13px; font-weight: 600;
+      }
+      .dot { width: 9px; height: 9px; border-radius: 50%; }
+      .running { background: #064e3b; color: #6ee7b7; }
+      .running .dot { background: #34d399; box-shadow: 0 0 0 3px rgba(52,211,153,.25); }
+      .starting { background: #422006; color: #fcd34d; }
+      .starting .dot { background: #fbbf24; }
+      .error { background: #450a0a; color: #fca5a5; }
+      .error .dot { background: #f87171; }
+
+      .card {
+        background: #1e293b; border: 1px solid #334155;
+        border-radius: 16px; padding: 18px; margin-top: 16px;
+      }
+      .label { font-size: 12px; color: #94a3b8; }
+      .url {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; margin-top: 6px;
+      }
+      .url code {
+        font-size: 15px; color: #e2e8f0; word-break: break-all;
+        background: #0f172a; padding: 8px 10px; border-radius: 8px; flex: 1;
+      }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      button {
+        font: inherit; cursor: pointer; border: none; border-radius: 9px;
+        padding: 9px 14px; font-size: 13px; font-weight: 600;
+      }
+      .btn { background: #334155; color: #e2e8f0; }
+      .btn:hover { background: #475569; }
+      .btn-primary { background: #2563eb; color: #fff; }
+      .btn-primary:hover { background: #1d4ed8; }
+      .btn-ghost { background: transparent; color: #94a3b8; }
+      .qr { display: flex; gap: 16px; align-items: center; }
+      .qr img { width: 160px; height: 160px; background: #fff; border-radius: 10px; padding: 6px; }
+      .hint { font-size: 12px; color: #94a3b8; line-height: 1.6; }
+      .footer { margin-top: 22px; display: flex; justify-content: space-between; align-items: center; }
+      .warn { margin-top: 12px; font-size: 12px; color: #fcd34d; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">記録班 SDカード管理システム</div>
+      <div class="sub">このアプリを起動している間、サーバーが動作します。</div>
+
+      <div id="statusBox"></div>
+      <div id="content"></div>
+
+      <div class="footer">
+        <span class="hint">ウィンドウを閉じるとサーバーも停止します。</span>
+        <button class="btn-ghost" onclick="serverApi.quit()">終了</button>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      function statusHtml(info) {
+        if (info.status === "running")
+          return `<div class="status running"><span class="dot"></span>サーバー稼働中（ポート ${info.port}）</div>`;
+        if (info.status === "error")
+          return `<div class="status error"><span class="dot"></span>起動エラー: ${info.message || ""}</div>`;
+        return `<div class="status starting"><span class="dot"></span>起動中…</div>`;
+      }
+
+      function urlCard(label, url, primary) {
+        return `
+          <div class="card">
+            <div class="label">${label}</div>
+            <div class="url">
+              <code>${url}</code>
+            </div>
+            <div class="row">
+              <button class="${primary ? "btn-primary" : "btn"}" onclick="serverApi.openExternal('${url}')">ブラウザで開く</button>
+              <button class="btn" onclick="serverApi.copy('${url}')">URLをコピー</button>
+            </div>
+          </div>`;
+      }
+
+      async function render() {
+        const info = await serverApi.getInfo();
+        $("statusBox").innerHTML = statusHtml(info);
+
+        if (info.status !== "running") {
+          $("content").innerHTML =
+            info.status === "error"
+              ? `<div class="card hint">サーバーの起動に失敗しました。ログを確認してください。</div>`
+              : `<div class="card hint">サーバーを起動しています。しばらくお待ちください…</div>`;
+          return;
+        }
+
+        let html = "";
+        html += `
+          <div class="card">
+            <div class="label">スマホで読み取って登録画面を開く</div>
+            <div class="qr">
+              ${info.qr ? `<img src="${info.qr}" alt="QR" />` : ""}
+              <div class="hint">
+                同じ Wi-Fi（LAN）に接続したスマホで<br/>このQRコードを読み取ってください。<br/><br/>
+                登録画面（現場・スマホ向け）に直接アクセスできます。
+              </div>
+            </div>
+          </div>`;
+        html += urlCard("登録画面（スマホ向け）", info.registerUrl, true);
+        html += urlCard("管理画面（PC向け）", info.adminUrl, false);
+        if (info.gateEnabled) {
+          html += `<div class="warn">⚠ チーム共通パスゲートが有効です（インターネット公開時の保護）。</div>`;
+        }
+        html += `<div class="hint" style="margin-top:12px">
+          インターネット公開（外出先からのアクセス）は Cloudflare Tunnel を併用します。手順は docs/deployment.md を参照してください。
+        </div>`;
+        $("content").innerHTML = html;
+      }
+
+      serverApi.onUpdated(() => render());
+      render();
+      // 起動直後はまだ status=starting のことがあるので軽くポーリング
+      let tries = 0;
+      const timer = setInterval(async () => {
+        const info = await serverApi.getInfo();
+        if (info.status === "running" || info.status === "error" || tries++ > 30) {
+          clearInterval(timer);
+          render();
+        }
+      }, 1000);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,56 @@
+name: Build macOS app
+
+# 目的:
+# Apple Silicon の macOS ランナー上でネイティブにビルドし、
+# 起動可能（自動アドホック署名）な .dmg を成果物として出力する。
+# これによりローカルの Node バージョン差異やクロスビルドの署名問題を回避し、
+# 完成した .dmg をダウンロードするだけで使えるようにする。
+
+on:
+  workflow_dispatch: {} # GitHub の Actions タブから手動実行できる
+  push:
+    branches:
+      - claude/blissful-galileo-g8kq0n
+
+# 新しい push が来たら進行中の古いビルドは自動キャンセル（CI 節約）
+concurrency:
+  group: build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-mac:
+    runs-on: macos-14 # Apple Silicon (arm64)
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare .env (build 時の DATABASE_URL 等)
+        run: cp .env.example .env
+
+      - name: Build macOS dmg
+        env:
+          # 署名証明書は無いので Developer ID 署名は試みない。
+          # macOS 上のビルドなので electron-builder が自動でアドホック署名する。
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist
+
+      - name: List build output
+        run: ls -lh dist-app || true
+
+      - name: Upload dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDカード管理-macOS-arm64-dmg
+          path: dist-app/*.dmg
+          if-no-files-found: error
+          retention-days: 14

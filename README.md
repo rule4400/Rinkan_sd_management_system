@@ -11,12 +11,94 @@ SD カードの紛失やトラブル発生時に、「いつ・誰が・どの�
 
 ## ドキュメント
 
-- 📘 **[システム設計書](docs/system-design.md)** … 本リポジトリのメイン成果物。
-  要件定義・アーキテクチャ・データモデル・画面/API 設計・公開方式・セキュリティ・開発計画を記載。
+- 📘 **[システム設計書](docs/system-design.md)** … 要件定義・アーキテクチャ・データモデル・画面/API 設計・公開方式・セキュリティ・開発計画。
+- 🛠 **[CLAUDE.md](CLAUDE.md)** … コーディングエージェント向けクイックリファレンス（構成・コマンド・規約・落とし穴）。
+- 🤝 **[引き継ぎ指示書 docs/HANDOFF.md](docs/HANDOFF.md)** … 現状・直近の変更・検証手順・既知の課題・次の一手。
+- 🚀 **[配布/公開 docs/deployment.md](docs/deployment.md)** … LAN 運用・Cloudflare 経由の公開手順。
 
 ## 現在のステータス
 
-`docs/system-design.md` にてシステム設計フェーズを完了。次フェーズで実装に着手します。
+システム設計（`docs/system-design.md`）に基づき、**動作する実装が完成**しています。
+
+- 登録フロー（**持ち出し / 予備 / 仮提出 / 提出** / 予備→持ち出し）。**シーンは複数選択可**。
+- 誤操作の**やり直し（取り消し）**。
+- 管理ダッシュボード、利用記録の検索・フィルタ・修正・削除・やり直し（**監査ログ付き**）。
+- マスタ CRUD、**CSV テンプレDL / CSV インポート**、CSV エクスポート。
+- 管理者認証・**パスワード変更**、**チーム共通パスゲート**（公開時保護）。
+- **高度な設定**: バックアップ作成／**日時を選んだロールバック**／**全データ削除**（確認フレーズ必須）。破壊的操作の前は**自動バックアップ**を取得。
+- **サーバー内蔵の GUI アプリ（Electron）**。アプリ起動だけでサーバーが立ち上がり、LAN URL と QR を表示。
+- **macOS(.dmg) を CI（GitHub Actions / Apple Silicon）でネイティブビルド**。
+
+> 開発を引き継ぐ場合は **[docs/HANDOFF.md](docs/HANDOFF.md)** と **[CLAUDE.md](CLAUDE.md)** を参照してください。
+
+## セットアップ
+
+```bash
+# 1. 依存をインストール（postinstall で Prisma Client も生成）
+npm install
+
+# 2. 環境変数を用意（本番では値を必ず変更）
+cp .env.example .env
+
+# 3. DB を作成してサンプルデータを投入
+npm run db:push
+npm run db:seed
+```
+
+## 実行
+
+### A. GUIアプリとして起動（推奨・サーバー内蔵）
+
+サーバーをコマンドラインで意識せず、**アプリを起動するだけ**でサーバーが立ち上がります。
+起動すると、コントロール画面に **LANアクセス用URL** と、スマホ用の **QRコード** が表示されます。
+
+```bash
+npm run app        # ビルドして GUI アプリを起動（Electron）
+```
+
+- コントロール画面の QR をスマホ（同じ Wi-Fi）で読み取ると、そのまま登録画面が開きます。
+- 「ブラウザで開く」から登録画面 / 管理画面を起動できます。
+- ウィンドウを閉じるとサーバーも停止します。
+
+配布用インストーラ（ダブルクリックで使える形）を作る場合:
+
+```bash
+npm run dist       # dist-app/ に Win(nsis)/Mac(dmg)/Linux(AppImage) を生成
+```
+
+> 配布物は実行する OS 上で `npm run dist` を行ってください（クロスビルドは別途設定が必要）。
+
+### B. コマンドラインで起動（サーバー単体）
+
+```bash
+# 開発
+npm run dev            # http://localhost:3000
+
+# 本番（ビルドして起動）
+npm run build
+node .next/standalone/server.js   # standalone 出力（自前ホスト向け）
+```
+
+- 登録画面（スマホ向け）: `/`
+- 管理画面（PC 向け）: `/admin` … 初期アカウント `admin` / `admin1234`（**本番では必ず変更**）
+
+### 主なコマンド
+
+| コマンド | 内容 |
+| --- | --- |
+| `npm run dev` | 開発サーバー |
+| `npm run build` | Prisma 生成 + Next.js ビルド |
+| `npm run db:push` | スキーマを SQLite に反映 |
+| `npm run db:seed` | 管理者＋サンプルマスタ投入 |
+| `npm run db:reset` | DB 初期化して再シード |
+
+## 公開（LAN + インターネット・無料）
+
+1. 常時起動マシン（LAN 内 PC / Raspberry Pi）で `node .next/standalone/server.js` を起動
+2. LAN 内は `http://<サーバーのLAN IP>:3000` でアクセス
+3. インターネット公開は **Cloudflare Tunnel（無料）**＋必要に応じて **Cloudflare Access（無料）** で保護
+
+詳細手順は [システム設計書 §10](docs/system-design.md#10-公開ネットワーク構成) を参照。
 
 ## 技術スタック（推奨）
 
@@ -26,6 +108,7 @@ SD カードの紛失やトラブル発生時に、「いつ・誰が・どの�
 | UI | Tailwind CSS | モバイルファーストのレスポンシブを低コストで実現 |
 | DB | SQLite + Prisma ORM | ファイル1個で完結・無料・バックアップはコピーのみ。将来 Postgres へ移行可 |
 | 認証 | パスワード（管理者）＋ 端末/チーム passphrase（利用者） | 用途に応じた段階的な保護 |
+| デスクトップ | Electron（サーバー内蔵 GUI） | アプリ起動だけでサーバーが動く・URL/QR を画面表示 |
 | 公開 | LAN 自前ホスト ＋ Cloudflare Tunnel（無料） | ポート開放不要・HTTPS 自動・完全無料 |
 
 詳細・代替案は[システム設計書](docs/system-design.md)を参照してください。

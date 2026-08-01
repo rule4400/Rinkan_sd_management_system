@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  @apply bg-slate-100 text-slate-900 antialiased;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP",
+    Meiryo,
+    sans-serif;
+}
+
+/* タップ操作しやすいよう、現場UIのボタンは大きめに */
+@layer components {
+  .tap-btn {
+    @apply flex items-center justify-center rounded-2xl border-2 border-transparent
+      bg-white px-4 py-5 text-lg font-semibold shadow-sm transition
+      active:scale-[0.98] hover:border-brand/40;
+  }
+  .tap-btn-primary {
+    @apply tap-btn bg-brand text-white hover:border-white/30;
+  }
+  .field {
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-base
+      outline-none focus:border-brand focus:ring-2 focus:ring-brand/20;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}
